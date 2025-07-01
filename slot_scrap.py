@@ -1,6 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright
-from pachinko_eachModelFunc import eachModelFunc
+from slot_eachModelFunc import eachModelFunc
 from humanLikeScroll import human_like_scroll
 import os
 import csv
@@ -8,10 +8,10 @@ from append_spreadsheet import append_googlespreadsheet
 
 async def run():
     # Define the filename and header
-    filename = "result(pachinko).csv"
+    filename = "result(slot).csv"
     headers = [
-        "日付", "機種名", "台番号", "打込み玉数", "差玉", 
-        "大当たり回数", "継続回数", "累計スタート", "最終スタート"
+        "日付", "機種名", "台番号", "投入枚数", "差枚数", 
+        "BIG回数", "REG回数", "AT/ART回数" "累計スタート", "最終スタート"
     ]
 
     # Check if file exists
@@ -61,8 +61,8 @@ async def run():
         await page.evaluate("window.scrollBy(0, 500)")
         await asyncio.sleep(1)
 
-        # Step 2: Click second <td> in first <tr>
-        await page.click("table.nc-main-menu > tbody > tr:nth-child(1) > td:nth-child(2) a")
+        # Step 2: Click third <td> in first <tr>
+        await page.click("table.nc-main-menu > tbody > tr:nth-child(1) > td:nth-child(3) a")
 
         # Step 3: Wait for list to appear (reCAPTCHA safe)
         await page.wait_for_selector("ul#ulKI > li", timeout=0)
@@ -133,8 +133,8 @@ async def run():
         print(f"The end")
 
         await browser.close()
-    file_name = "result(pachinko).csv"
-    spreadsheet_id = "1iFUPPaXyedZODzab1PcREKpRNnrvoKO4noi8b9ZFoVQ"
+    file_name = "result(slot).csv"
+    spreadsheet_id = "1ptaunoaTOj4bTicFA6AQMjyZ_Iw0JHCA3nxF2GW1qVE"
     sheet_name = "全データ集積"
     append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)
 

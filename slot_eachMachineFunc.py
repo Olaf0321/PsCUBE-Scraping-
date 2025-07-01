@@ -7,14 +7,14 @@ from datetime import datetime, timedelta
 import re
 import csv
 
-def append_row_to_csv(row_data, filename="result(pachinko).csv"):
+def append_row_to_csv(row_data, filename="result(slot).csv"):
     with open(filename, mode='a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(row_data)
 
 async def eachMachineFunc(page, model_name):
     await asyncio.sleep(1)
-    
+
     # await page.wait_for_load_state("load")
     title = await page.title()
     print("New page title:", title)
@@ -25,10 +25,11 @@ async def eachMachineFunc(page, model_name):
         "2025-06-28",           # 日付
         title,                 # 機種名（ここではタイトルを機種名の代わりに使用）
         "123",                 # 台番号
-        "1000",                # 打込み玉数
-        "-200",                # 差玉
-        "5",                   # 大当たり回数
-        "2",                   # 継続回数
+        "1000",                # 投入枚数
+        "-200",                # 差枚数
+        "5",                   # BIG回数
+        "2",                   # REG回数
+        "2",                   # AT/ART回数
         "500",                 # 累計スタート
         "150",                 # 最終スタート
     ]
@@ -73,7 +74,7 @@ async def eachMachineFunc(page, model_name):
         divs = await td.query_selector_all('div.outer.border-bottom')
 
         # index: 1, 2, 4, 5（0-based index）を抽出
-        indices_to_extract = [1, 2, 4, 5]
+        indices_to_extract = [1, 2, 3, 7, 8]
 
         values = []
         for j in indices_to_extract:
@@ -97,9 +98,10 @@ async def eachMachineFunc(page, model_name):
         extracted_data[6] = values[1]
         extracted_data[7] = values[2]
         extracted_data[8] = values[3]
+        extracted_data[9] = values[4]
 
         print(extracted_data)
 
         # データを書き込み
         append_row_to_csv(extracted_data)
-        print(f"✔️ result(pachinko).csvに正確に保存されました。")
+        print(f"✔️ result(slot).csvに正確に保存されました。")
