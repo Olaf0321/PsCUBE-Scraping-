@@ -17,7 +17,7 @@ async def eachMachineFunc(page, model_name):
     
     # await page.wait_for_load_state("load")
     title = await page.title()
-    print("New page title:", title)
+    print(f"取得した新しいページタイトル: {title}")
     await human_like_scroll(page, 500)
     # await asyncio.sleep(5)
 

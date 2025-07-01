@@ -17,7 +17,7 @@ async def eachMachineFunc(page, model_name):
 
     # await page.wait_for_load_state("load")
     title = await page.title()
-    print("New page title:", title)
+    print(f"取得した新しいページタイトル: {title}")
     await human_like_scroll(page, 500)
     # await asyncio.sleep(5)
 
@@ -104,4 +104,4 @@ async def eachMachineFunc(page, model_name):
 
         # データを書き込み
         append_row_to_csv(extracted_data)
-        print(f"✔️ result(slot).csvに正確に保存されました。")
+        print(f"✔️ result(pachinko).csvに正確に保存されました。")

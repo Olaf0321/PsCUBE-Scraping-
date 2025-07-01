@@ -25,7 +25,7 @@ async def eachModelFunc(page, model_name):
 
         divs = await target_td.query_selector_all('div.outer.border-bottom')
         if i >= len(divs):
-            print(f"Skipping index {i}, not enough divs on page.")
+            print(f"インデックス {i} をスキップします。ページ内の div 要素が不足しています。")
             continue
 
         div = divs[i]
@@ -36,7 +36,7 @@ async def eachModelFunc(page, model_name):
         try:
             await div.click()
         except Exception as e:
-            print(f"Failed to click div at index {i}: {e}")
+            print(f"インデックス {i} の div をクリックできませんでした：{e}")
             continue
 
         await page.wait_for_load_state("load")

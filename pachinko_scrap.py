@@ -21,7 +21,7 @@ async def run():
         writer = csv.writer(file)
         writer.writerow(headers)  # Always write the header
 
-    print(f'"{filename}" is now initialized with header only.')
+    print(f'ファイル「{filename}」は、ヘッダーのみで初期化されました。')
 
     base_url = "https://www.pscube.jp/h/a718736/cgi-bin/nc-v03-001.php?cd_ps=1#4;652"
     initial_page = "https://www.pscube.jp/h/a718736/"
@@ -129,7 +129,7 @@ async def run():
             await page.goto(base_url)
             await page.wait_for_load_state("load")
 
-        print(f"The end")
+        print("処理が完了しました。")
 
         await browser.close()
 

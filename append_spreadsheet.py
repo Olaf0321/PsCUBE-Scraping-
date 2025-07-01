@@ -1,7 +1,6 @@
 import csv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
 
 def append_googlespreadsheet(file_name, spreadsheet_id, sheet_name):
     # === CONFIGURATION ===
@@ -20,8 +19,9 @@ def append_googlespreadsheet(file_name, spreadsheet_id, sheet_name):
     with open(CSV_FILE, newline='', encoding='utf-8') as f:
         reader = csv.reader(f)
         csv_data = list(reader)
-        csv_header = csv_data[0]
-        csv_rows = csv_data[1:]
+
+    csv_header = csv_data[0]
+    csv_rows = csv_data[1:]  # New data rows
 
     # === READ EXISTING SHEET DATA ===
     range_all = f"{SHEET_NAME}!A1:Z1000"
@@ -30,89 +30,37 @@ def append_googlespreadsheet(file_name, spreadsheet_id, sheet_name):
         range=range_all
     ).execute().get('values', [])
 
-    # === DECIDE WHAT TO APPEND ===
     if not existing:
-        append_values = [csv_header] + csv_rows
+        existing_header = csv_header
+        existing_rows = []
     else:
-        if existing[0] == csv_header:
-            append_values = csv_rows
-        else:
-            raise Exception("Header mismatch between CSV and Google Sheet.")
+        existing_header = existing[0]
+        existing_rows = existing[1:]
 
-    # === APPEND DATA ===
-    if append_values:
-        service.spreadsheets().values().append(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"{SHEET_NAME}!A1",
-            valueInputOption='RAW',
-            insertDataOption='INSERT_ROWS',
-            body={'values': append_values}
-        ).execute()
-        print(f"✅ Step 1: Appended {len(append_values)} rows to spreadsheet.")
-    else:
-        print("ℹ️ No new data to append.")
+    # === VALIDATE HEADER MATCH ===
+    if existing and existing_header != csv_header:
+        raise Exception("Header mismatch between CSV and Google Sheet.")
 
-    # === FETCH DATA AGAIN FOR CLEANUP ===
-    all_data = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range=range_all
-    ).execute().get('values', [])
+    # === REMOVE DUPLICATES (from new rows) ===
+    existing_set = set(tuple(row) for row in existing_rows)
+    unique_new_rows = [row for row in csv_rows if tuple(row) not in existing_set]
 
-    if not all_data or len(all_data) < 2:
-        print("ℹ️ Not enough data to clean.")
-        exit()
+    # === COMBINE NEW + OLD ROWS ===
+    final_data = [csv_header] + unique_new_rows + existing_rows
 
-    header = all_data[0]
-    rows = all_data[1:]
-
-    # === REMOVE DUPLICATES (normalized row) ===
-    unique_set = set()
-    unique_rows = []
-
-    for row in rows:
-        row_tuple = tuple(row)
-        if row_tuple not in unique_set:
-            unique_set.add(row_tuple)
-            unique_rows.append(row)  # Keep only the first occurrence
-
-    # === SORT BY '日付' COLUMN ===
-    if '日付' in header:
-        def parse_date(value):
-            value = value.strip().lstrip("'")
-            try:
-                return datetime.strptime(value, "%Y/%m/%d")
-            except ValueError:
-                try:
-                    return datetime(1899, 12, 30) + timedelta(days=int(float(value)))
-                except Exception as e:
-                    print(f"⚠️ Skipping invalid date: {value} ({e})")
-                    return datetime.max  # Puts invalid dates at the end
-
-        unique_rows.sort(key=lambda row: parse_date(row[0]))
-    else:
-        print("⚠️ '日付' column not found. Skipping sort.")
-
-    # === OVERWRITE CLEANED DATA BACK TO SHEET ===
-    final_data = [header] + unique_rows
-
-    # Clear existing contents
-    clear_values_request = {}
+    # === CLEAR EXISTING DATA ===
     service.spreadsheets().values().clear(
         spreadsheetId=SPREADSHEET_ID,
-        range=SHEET_NAME,
-        body=clear_values_request
+        range=range_all,
+        body={}
     ).execute()
 
-    # Write new data
-    final_data = [header] + unique_rows
-    body = {
-        'values': final_data
-    }
+    # === WRITE MERGED DATA TO SHEET ===
     service.spreadsheets().values().update(
         spreadsheetId=SPREADSHEET_ID,
-        range=SHEET_NAME,
+        range=f"{SHEET_NAME}!A1",
         valueInputOption='RAW',
-        body=body
+        body={'values': final_data}
     ).execute()
 
-    print(f"✅ Step 2: Cleaned {len(rows)} rows → {len(unique_rows)} unique rows sorted by '日付'.")                                                                                                                                                    
+    print(f"✅ 新規の重複なしデータ {len(unique_new_rows)} 行を追加しました（既存データを含めた合計は {len(final_data) - 1} 行）。")                                                                                                                                             

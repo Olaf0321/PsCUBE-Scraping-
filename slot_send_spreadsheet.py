@@ -8,7 +8,7 @@ async def slot_send_spreadsheet():
     sheet_name = "全データ集積"
     # Check if the file exists
     if not os.path.exists(file_name):
-        print(f"File not found: {file_name}")
+        print(f"ファイルが見つかりません: {file_name}")
         return  # Stop execution
     
     append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)

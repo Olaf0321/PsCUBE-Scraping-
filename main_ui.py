@@ -20,12 +20,16 @@ class ScriptRunner(QThread):
 
     def run(self):
         try:
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
             self.process = subprocess.Popen(
-                [sys.executable, self.script_path],
+                [sys.executable, "-u", self.script_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=1,
-                universal_newlines=True
+                universal_newlines=True,
+                encoding="utf-8",
+                env=env
             )
             for line in self.process.stdout:
                 if self._stop:
