@@ -4,7 +4,6 @@ from pachinko_eachModelFunc import eachModelFunc
 from humanLikeScroll import human_like_scroll
 import os
 import csv
-from append_spreadsheet import append_googlespreadsheet
 
 async def run():
     # Define the filename and header
@@ -133,9 +132,5 @@ async def run():
         print(f"The end")
 
         await browser.close()
-    file_name = "result(pachinko).csv"
-    spreadsheet_id = "1iFUPPaXyedZODzab1PcREKpRNnrvoKO4noi8b9ZFoVQ"
-    sheet_name = "全データ集積"
-    append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)
 
 asyncio.run(run())

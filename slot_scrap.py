@@ -4,14 +4,13 @@ from slot_eachModelFunc import eachModelFunc
 from humanLikeScroll import human_like_scroll
 import os
 import csv
-from append_spreadsheet import append_googlespreadsheet
 
 async def run():
     # Define the filename and header
     filename = "result(slot).csv"
     headers = [
         "日付", "機種名", "台番号", "投入枚数", "差枚数", 
-        "BIG回数", "REG回数", "AT/ART回数" "累計スタート", "最終スタート"
+        "BIG回数", "REG回数", "AT/ART回数", "累計スタート", "最終スタート"
     ]
 
     # Check if file exists
@@ -133,9 +132,5 @@ async def run():
         print(f"The end")
 
         await browser.close()
-    file_name = "result(slot).csv"
-    spreadsheet_id = "1ptaunoaTOj4bTicFA6AQMjyZ_Iw0JHCA3nxF2GW1qVE"
-    sheet_name = "全データ集積"
-    append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)
 
 asyncio.run(run())
