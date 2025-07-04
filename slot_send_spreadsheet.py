@@ -12,5 +12,7 @@ async def slot_send_spreadsheet():
         return  # Stop execution
     
     append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)
+    # arigato = "ありがとう！"
+    # print(arigato)
 
 asyncio.run(slot_send_spreadsheet())
