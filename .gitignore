@@ -10,3 +10,4 @@ weighty-vertex-464012-u4-7cd9bab1166b.json
 *.pdf
 *.docx
 __pycache__
+.env
