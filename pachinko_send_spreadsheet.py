@@ -3,6 +3,13 @@ import csv
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import os
+import sys
+
+def set_stdout(to_file=True):
+    if to_file:
+        sys.stderr = sys.stdout
+    else:
+        sys.stderr = sys.__stderr__
 
 def append_googlespreadsheet(file_name, spreadsheet_id, sheet_name):
     # === CONFIGURATION ===
@@ -78,4 +85,9 @@ async def pachinko_send_spreadsheet():
 
     append_googlespreadsheet(file_name, spreadsheet_id, sheet_name)
 
-asyncio.run(pachinko_send_spreadsheet())
+def main(to_file=True):
+    set_stdout(to_file)
+    asyncio.run(pachinko_send_spreadsheet())
+
+if __name__ == "__main__":
+    main(to_file=True)

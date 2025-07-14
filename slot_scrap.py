@@ -6,6 +6,13 @@ from datetime import datetime, timedelta
 import os
 import csv
 import json
+import sys
+
+def set_stdout(to_file=True):
+    if to_file:
+        sys.stderr = sys.stdout
+    else:
+        sys.stderr = sys.__stderr__
 
 async def human_like_scroll(page, scroll_offset):
     total_scrolled = 0
@@ -253,22 +260,10 @@ async def run():
     )
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            args=[
-                "--start-maximized",
-                "--disable-blink-features=AutomationControlled",
-            ]
-        )
-
-        context = await browser.new_context(
-            user_agent=user_agent,
-            viewport={'width': 1024, 'height': 768}
-        )
-
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context(user_agent=user_agent, viewport={"width": 1280, "height": 800})
         page = await context.new_page()
 
-        # Hide navigator.webdriver
         await page.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined
@@ -353,4 +348,9 @@ async def run():
 
         await browser.close()
 
-asyncio.run(run())
+def main(to_file=True):
+    set_stdout(to_file)
+    asyncio.run(run())
+
+if __name__ == "__main__":
+    main(to_file=True)
