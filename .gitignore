@@ -15,3 +15,4 @@ dist
 build
 playwright-browsers
 main_ui.spec
+dist.zip
