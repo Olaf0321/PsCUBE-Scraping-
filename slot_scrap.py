@@ -5,6 +5,14 @@ import re
 from datetime import datetime, timedelta
 import os
 import csv
+import json
+import sys
+
+def set_stdout(to_file=True):
+    if to_file:
+        sys.stderr = sys.stdout
+    else:
+        sys.stderr = sys.__stderr__
 
 async def human_like_scroll(page, scroll_offset):
     total_scrolled = 0
@@ -29,6 +37,7 @@ def append_row_to_csv(row_data, filename="result(slot).csv"):
         writer.writerow(row_data)
 
 async def eachMachineFunc(page, model_name):
+    result = []
     await asyncio.sleep(1)
 
     # await page.wait_for_load_state("load")
@@ -119,8 +128,8 @@ async def eachMachineFunc(page, model_name):
         print(extracted_data)
 
         # データを書き込み
-        append_row_to_csv(extracted_data)
-        print(f"✔️ result(pachinko).csvに正確に保存されました。")
+        result.append(extracted_data.copy())
+    return result
 
 async def eachModelFunc(page, model_name):
     await asyncio.sleep(1)
@@ -134,6 +143,23 @@ async def eachModelFunc(page, model_name):
 
     # Step 3: Store the index positions instead of element handles
     num_divs = len(divs)
+
+    response_data = None
+
+    async def handle_response(response):
+        nonlocal response_data
+        if "nc-m06-001.php" in response.url and response.status == 200:
+            try:
+                json_data = await response.json()
+                print("✅ レスポンス取得成功:", response.url)
+                # JSONファイル保存
+                with open("slump_graph.json", "w", encoding="utf-8") as f:
+                    json.dump(json_data, f, ensure_ascii=False, indent=2)
+                response_data = json_data
+            except Exception as e:
+                print("❌ JSON解析失敗:", e)
+
+    page.on("response", handle_response)
 
     # Step 4: Loop by index and re-fetch the element each time
     for i in range(1, num_divs):
@@ -161,14 +187,49 @@ async def eachModelFunc(page, model_name):
 
         await page.wait_for_load_state("load")
 
-        await eachMachineFunc(page, model_name)
+        # 対象とするグラフタイトル
+        target_titles = ["1日前", "2日前", "3日前", "4日前", "5日前", "6日前"]
+
+        # 各日付の右端データを格納するリスト
+        right_endpoints = []
+        if response_data:
+            for title in target_titles:
+                try:
+                    graph = next(g for g in response_data["Graph"] if g["title"] == title)
+                    datas = graph["src"]["datas"]
+                    points = [p for p in datas if "out" in p and "value" in p]
+                    right = next((p for p in reversed(points) if p["value"] != 0), points[-1])
+                    right_endpoints.append({
+                        "title": title,
+                        "out": right["out"],
+                        "value": right["value"]
+                    })
+                except StopIteration:
+                    print(f"⚠ グラフが見つかりませんでした: {title}")
+                except Exception as e:
+                    print(f"❌ エラー発生（{title}）: {e}")
+
+            # 結果表示
+            for data in right_endpoints:
+                print(f"📊 {data['title']} の右端: out={data['out']}, value={data['value']}")
+        else:
+            print("❗ スランプグラフのレスポンスを取得できませんでした。")
+
+        result = await eachMachineFunc(page, model_name)
+        print(f"取得した機種データ: {result}")
+        if result:
+            for index, data in enumerate(right_endpoints):
+                # 各日付のデータを追加
+                if index < len(result):
+                    result[index][3] = data['out']
+                    result[index][4] = data['value']
+                    append_row_to_csv(result[index])
+        else:
+            print("❗ 機種データの取得に失敗しました。")
 
         # Go back to the previous page
         await page.go_back()
         await page.wait_for_load_state("load")
-
-        # Optional delay
-        # await asyncio.sleep(0.5)
 
 async def run():
     # Define the filename and header
@@ -199,22 +260,10 @@ async def run():
     )
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            args=[
-                "--start-maximized",
-                "--disable-blink-features=AutomationControlled",
-            ]
-        )
-
-        context = await browser.new_context(
-            user_agent=user_agent,
-            viewport={'width': 1024, 'height': 768}
-        )
-
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context(user_agent=user_agent, viewport={"width": 1280, "height": 800})
         page = await context.new_page()
 
-        # Hide navigator.webdriver
         await page.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined
@@ -288,7 +337,7 @@ async def run():
                 await eachModelFunc(page, title_text)
 
                 # Scroll further for next round
-                scroll_offset += 300
+                scroll_offset += 600
 
             last_len = len(list_items)
             # Go back to the list page
@@ -299,4 +348,9 @@ async def run():
 
         await browser.close()
 
-asyncio.run(run())
+def main(to_file=True):
+    set_stdout(to_file)
+    asyncio.run(run())
+
+if __name__ == "__main__":
+    main(to_file=True)
