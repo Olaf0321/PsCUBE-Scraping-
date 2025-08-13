@@ -7,12 +7,51 @@ from datetime import datetime, timedelta
 import re
 import json
 import sys
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 def set_stdout(to_file=True):
     if to_file:
         sys.stderr = sys.stdout
     else:
         sys.stderr = sys.__stderr__
+
+def get_checked_rows():
+    SHOP_SPREADSHEET_ID = "1fWsztueWu0xxtcZn-FRPzxJaHV1MhbPwcUOi23rV9lY"
+    RANGE_NAME = "A1:D"
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+    SERVICE_ACCOUNT_FILE = "weighty-vertex-464012-u4-7cd9bab1166b.json"
+    # 認証
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    
+    service = build('sheets', 'v4', credentials=creds)
+    sheet = service.spreadsheets()
+    
+    # データ取得
+    result = sheet.values().get(spreadsheetId=SHOP_SPREADSHEET_ID,
+                                range=RANGE_NAME).execute()
+    values = result.get('values', [])
+    
+    if not values:
+        print('シートにデータがありません。')
+        return []
+
+    headers = values[0]
+    checked_rows = []
+
+    # データ行を処理（1行目はヘッダー）
+    for row in values[1:]:
+        # チェックボックス列が 'TRUE' の行のみ対象
+        if len(row) > 0 and row[0].strip().upper() == 'TRUE':
+            row_data = {headers[i]: row[i] if i < len(row) else '' for i in range(len(headers))}
+            checked_rows.append(row_data)
+    
+    return checked_rows
+
+def sanitize_filename(filename: str) -> str:
+    # Windowsで使えない文字を除去またはアンダースコアに変換
+    return re.sub(r'[<>:"/\\|?*]', '_', filename)
 
 async def human_like_scroll(page, scroll_offset):
     total_scrolled = 0
@@ -21,22 +60,54 @@ async def human_like_scroll(page, scroll_offset):
         remaining = scroll_offset - total_scrolled
 
         # If less than 100px left, scroll that exact amount
-        if remaining < 100:
+        if remaining < 1000:
             step = remaining
         else:
-            step = random.randint(100, min(500, remaining))
+            step = random.randint(1000, min(5000, remaining))
 
         await page.evaluate(f"window.scrollBy(0, {step})")
         total_scrolled += step
 
-        await asyncio.sleep(random.uniform(0.1, 0.4))
+        await asyncio.sleep(random.uniform(0.5, 1))
 
-def append_row_to_csv(row_data, filename="result(pachinko).csv"):
+def append_row_to_csv(row_data, filename):
     with open(filename, mode='a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(row_data)
 
-async def eachMachineFunc(page, model_name):
+def extract_sheet_id_from_url(url: str) -> str:
+    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+    if match:
+        return match.group(1)
+    else:
+        return None
+
+def get_current_sheet_date(pachinko_sheet_url):
+    PACHINKO_SPREADSHEET_ID = extract_sheet_id_from_url(pachinko_sheet_url)
+    RANGE_NAME = "A2:A2"
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+    SERVICE_ACCOUNT_FILE = "weighty-vertex-464012-u4-7cd9bab1166b.json"
+    # 認証
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    
+    service = build('sheets', 'v4', credentials=creds)
+    sheet = service.spreadsheets()
+    
+    # データ取得
+    result = sheet.values().get(spreadsheetId=PACHINKO_SPREADSHEET_ID,
+                                range=RANGE_NAME).execute()
+    values = result.get('values', [])
+    
+    print(f"取得したシートのデータ: {values}")
+    current_sheet_date = values[0][0] if values else None
+    if current_sheet_date:
+        print(f"現在のシートの日付: {current_sheet_date}")
+    else:
+        print("シートから日付を取得できませんでした。")
+    return current_sheet_date
+
+async def eachMachineFunc(page, model_name, scrap_days):
     result = []
     await asyncio.sleep(1)
     
@@ -91,9 +162,7 @@ async def eachMachineFunc(page, model_name):
     tds = await tr.query_selector_all('td')
 
     # 最初の td をスキップ（index 0）、2番目以降に対して処理
-    for i, td in enumerate(tds[1:], start=1):
-        if i > 6:
-            break  # 最大6日前までに制限
+    for i, td in enumerate(tds[1:1+scrap_days], start=1):
         # td 内のすべての <div class="outer border-bottom"> を取得
         divs = await td.query_selector_all('div.outer.border-bottom')
 
@@ -129,9 +198,11 @@ async def eachMachineFunc(page, model_name):
         result.append(extracted_data.copy())
     return result
 
-async def eachModelFunc(page, model_name):
+async def eachModelFunc(page, model_name, filename, scrap_days):
     await asyncio.sleep(1)
     # Step 1: Select the first <td> with the target class
+    await page.wait_for_selector("td.nc-grid-color-fix.nc-text-align-center", timeout=0)
+    await asyncio.sleep(1)
     target_td = await page.query_selector('td.nc-grid-color-fix.nc-text-align-center')
     if not target_td:
         raise Exception("Target <td> not found.")
@@ -186,8 +257,19 @@ async def eachModelFunc(page, model_name):
 
         await page.wait_for_load_state("load")
 
-        # 対象とするグラフタイトル
-        target_titles = ["1日前", "2日前", "3日前", "4日前", "5日前", "6日前"]
+        match scrap_days:
+            case 1:
+                target_titles = ["1日前"]
+            case 2:
+                target_titles = ["1日前", "2日前"]
+            case 3:
+                target_titles = ["1日前", "2日前", "3日前"]
+            case 4:
+                target_titles = ["1日前", "2日前", "3日前", "4日前"]
+            case 5:
+                target_titles = ["1日前", "2日前", "3日前", "4日前", "5日前"]
+            case 6:
+                target_titles = ["1日前", "2日前", "3日前", "4日前", "5日前", "6日前"]
 
         # 各日付の右端データを格納するリスト
         right_endpoints = []
@@ -214,7 +296,7 @@ async def eachModelFunc(page, model_name):
         else:
             print("❗ スランプグラフのレスポンスを取得できませんでした。")
 
-        result = await eachMachineFunc(page, model_name)
+        result = await eachMachineFunc(page, model_name, scrap_days)
         print(f"取得した機種データ: {result}")
         if result:
             for index, data in enumerate(right_endpoints):
@@ -222,7 +304,7 @@ async def eachModelFunc(page, model_name):
                 if index < len(result):
                     result[index][3] = data['out']
                     result[index][4] = data['value']
-                    append_row_to_csv(result[index])
+                    append_row_to_csv(result[index], filename)
         else:
             print("❗ 機種データの取得に失敗しました。")
 
@@ -231,26 +313,13 @@ async def eachModelFunc(page, model_name):
         await page.wait_for_load_state("load")
 
 async def run():
-    # Define the filename and header
-    filename = "result(pachinko).csv"
-    headers = [
-        "日付", "機種名", "台番号", "打込み玉数", "差玉", 
-        "大当たり回数", "継続回数", "累計スタート", "最終スタート"
-    ]
-
-    # Check if file exists
-    file_exists = os.path.exists(filename)
-
-    # Open the file in write mode (this will truncate it if it exists)
-    with open(filename, mode='w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(headers)  # Always write the header
-
-    print(f'ファイル「{filename}」は、ヘッダーのみで初期化されました。')
-
-    base_url = "https://www.pscube.jp/h/a718736/cgi-bin/nc-v03-001.php?cd_ps=1#4;652"
-    initial_page = "https://www.pscube.jp/h/a718736/"
+    shop_rows = get_checked_rows()
+    if not shop_rows:
+        print("チェックされた行がありません。処理を終了します。")
+        return
     
+    print(f"チェックされた行数: {len(shop_rows)}")
+
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -268,79 +337,141 @@ async def run():
         });
         """)
 
-        # Step 1: Go to the initial page
-        await page.goto(initial_page)
-        await page.evaluate("window.scrollBy(0, 500)")
-        await asyncio.sleep(1)
+        for shop in shop_rows:
+            shop_url = shop.get("店舗URL")
+            print(f"処理中の店舗: {shop_url}")
+            pachinko_sheet_url = shop.get("パチンコ用")
+            print(f"パチンコ用URL: {pachinko_sheet_url}")
+            if not shop_url or not pachinko_sheet_url:
+                print("店舗URLまたはパチンコ用URLが指定されていません。スキップします。")
+                continue
 
-        # Step 2: Click second <td> in first <tr>
-        await page.click("table.nc-main-menu > tbody > tr:nth-child(1) > td:nth-child(2) a")
+            current_sheet_date_str = get_current_sheet_date(pachinko_sheet_url)
 
-        # Step 3: Wait for list to appear (reCAPTCHA safe)
-        await page.wait_for_selector("ul#ulKI > li", timeout=0)
+            if current_sheet_date_str:
+                # Parse the string into a datetime object
+                current_sheet_date = datetime.strptime(current_sheet_date_str, "%Y/%m/%d")
+                
+                # Calculate the difference (delta)
+                scrap_delta = datetime.now() - current_sheet_date
+                
+                # Optionally, get number of days as integer
+                scrap_days = scrap_delta.days - 1
+                print(f"現在のシートの日付: {current_sheet_date}, 差分日数: {scrap_days} 日")
+            else:
+                scrap_days = 6
 
-        # 例: 許可された機種名リスト（部分一致などでカスタマイズ可能）
-        allowed_titles = ["e真北斗無双5 SFEE"]
+            if scrap_days == 0:
+                print("シートの日付と現在の日付が同じです。処理をスキップします。")
+                continue
 
-        last_len = 0
-        scroll_offset = 800
-        visited_links = set()
+            # Define the filename and header
+            filename = f"result(pachinko)-{shop_url}.csv"
+            filename = sanitize_filename(filename)
+            headers = [
+                "日付", "機種名", "台番号", "打込み玉数", "差玉", 
+                "大当たり回数", "継続回数", "累計スタート", "最終スタート"
+            ]
 
-        while True:
-            link_title_list = []
-            # Scroll down incrementally
-            # await page.evaluate(f"window.scrollTo(0, {scroll_offset})")
-            await human_like_scroll(page, scroll_offset)
-            await page.wait_for_load_state("load")
+            # Open the file in write mode (this will truncate it if it exists)
+            with open(filename, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(headers)  # Always write the header
 
-            # Get all visible <li> elements under #ulKI
-            list_items = await page.query_selector_all("ul#ulKI > li")
-            print(f"last_len-len(list_items):{last_len}-{len(list_items)}")
+            print(f'ファイル「{filename}」は、ヘッダーのみで初期化されました。')
 
-            if last_len == len(list_items): break
+            initial_page = shop_url
+            # Step 1: Go to the initial page
+            await page.goto(initial_page)
+            await page.evaluate("window.scrollBy(0, 500)")
+            await asyncio.sleep(1)
 
-            for i in range(last_len, len(list_items)):
-                li = list_items[i]
+            # 条件に合う img 要素をすべて取得
+            img_elements = await page.query_selector_all('td a img[alt="パチンコデータ"]')
 
-                link = await li.query_selector("a")
-                if not link:
-                    continue
+            if img_elements:
+                # 最初の img 要素を選択
+                img = img_elements[0]
 
-                # 最初の <div> を取得してタイトル抽出
-                divs_in_link = await link.query_selector_all("div")
-                if not divs_in_link:
-                    continue
+                # 最も近い親 a タグを取得
+                a_element = await img.evaluate_handle("el => el.closest('a')")
 
-                first_div = divs_in_link[0]
-                title_text = (await first_div.inner_text()).strip()
+                # href 属性を取得
+                href = await a_element.get_attribute("href")
+                base_url = initial_page.rsplit("/", 1)[0] + "/" + href if href else initial_page
+                print(f"ベースURL: {base_url}")
+                print(f"取得した href: {href}")
+            else:
+                print("該当要素なし")
+                continue
 
-                href = await link.get_attribute("href")
-                if href and href not in visited_links:
-                    visited_links.add(href)
-                    link_title_list.append((href, title_text))
-                    print(f"✅ リンク収集: {href} / タイトル: {title_text}")
+            await page.goto(base_url)
+            await page.wait_for_selector("ul#ulKI > li", timeout=0)
 
-            print(f"\n🔎 収集したリンク数: {len(link_title_list)}\n")
+            # 例: 許可された機種名リスト（部分一致などでカスタマイズ可能）
+            allowed_titles = ["e真北斗無双5 SFEE"]
 
+            last_len = 0
+            scroll_offset = 800
+            visited_links = set()
 
-            # 🔁 抽出したリンク・タイトルを使ってページ遷移処理
-            for href, title_text in link_title_list:
-                full_url = base_url.rsplit("/", 1)[0] + "/" + href  # href が相対パスなら補完
-                print(f"\n➡️ 遷移: {title_text} - {full_url}")
+            # continue
 
-                await page.goto(full_url)
+            while True:
+                link_title_list = []
+                # Scroll down incrementally
+                # await page.evaluate(f"window.scrollTo(0, {scroll_offset})")
+                await human_like_scroll(page, scroll_offset)
                 await page.wait_for_load_state("load")
 
-                # 実際の処理を実行
-                await eachModelFunc(page, title_text)
+                # Get all visible <li> elements under #ulKI
+                list_items = await page.query_selector_all("ul#ulKI > li")
+                print(f"last_len-len(list_items):{last_len}-{len(list_items)}")
 
-                # Scroll further for next round
-                scroll_offset += 600
+                if last_len == len(list_items): break
 
-            last_len = len(list_items)
-            # Go back to the list page
-            await page.goto(base_url)
-            await page.wait_for_load_state("load")
+                for i in range(last_len, len(list_items)):
+                    li = list_items[i]
+
+                    link = await li.query_selector("a")
+                    if not link:
+                        continue
+
+                    # 最初の <div> を取得してタイトル抽出
+                    divs_in_link = await link.query_selector_all("div")
+                    if not divs_in_link:
+                        continue
+
+                    first_div = divs_in_link[0]
+                    title_text = (await first_div.inner_text()).strip()
+
+                    href = await link.get_attribute("href")
+                    if href and href not in visited_links:
+                        visited_links.add(href)
+                        link_title_list.append((href, title_text))
+                        print(f"✅ リンク収集: {href} / タイトル: {title_text}")
+
+                print(f"\n🔎 収集したリンク数: {len(link_title_list)}\n")
+
+
+                # 🔁 抽出したリンク・タイトルを使ってページ遷移処理
+                for href, title_text in link_title_list:
+                    full_url = base_url.rsplit("/", 1)[0] + "/" + href  # href が相対パスなら補完
+                    print(f"\n➡️ 遷移: {title_text} - {full_url}")
+
+                    await page.goto(full_url)
+                    await page.wait_for_load_state("load")
+
+                    # 実際の処理を実行
+                    await eachModelFunc(page, title_text, filename, scrap_days)
+
+                    # Scroll further for next round
+                    scroll_offset += 600
+
+                last_len = len(list_items)
+                # Go back to the list page
+                await page.goto(base_url)
+                await page.wait_for_load_state("load")
 
         print("処理が完了しました。")
 
